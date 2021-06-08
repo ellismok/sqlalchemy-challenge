@@ -1,102 +1,161 @@
-# Import everything you used in the starter_climate_analysis.ipynb file, along with Flask modules
+### IMPORT LIBRARIES ###
 from matplotlib import style
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from datetime import datetime, timedelta
 from datetime import date
-import sqlite3
+import sqlalchemy
+from sqlalchemy.ext.automap import automap_base
+from sqlalchemy.orm import Session
+from sqlalchemy import create_engine, func
+from sqlalchemy import desc
 
 from flask import Flask, jsonify
 
-#################################################
-# Database Setup
-#################################################
+### FLASK SET UP ###
+app = Flask(__name__)
+
+
+### DATABASE SET UP ###
+
 # Create an engine
-engine = create_engine(f"sqlite:///data/hawaii.sqlite")
-# reflect an existing database into a new model with automap_base() and Base.prepare()
+engine = create_engine("sqlite:///data/hawaii.sqlite")
+# Use automap_base() to reflect the existing table and using .prepare() to reflect the schema and produce mapping
 Base = automap_base()
 # Save references to each table
 Base.prepare(engine, reflect = True)
 
-# Instantiate a Session and bind it to the engine
+# Create mapped classes with new variable names 
 HawaiiMeasurement = Base.classes.measurement
 HawaiiStation = Base.classes.station
 
+# Create a session
 session = Session(engine)
 
-#################################################
-# Flask Setup
-#################################################
-# Instantiate a Flask object at __name__, and save it to a variable called app
-app = Flask(__name__)
-
-#################################################
-# Flask Routes
-#################################################
-# Set the app.route() decorator for the base '/'
+### ROUTE SET UP ###
 @app.route("/")
-# define a welcome() function that returns a multiline string message to anyone who visits the route
-def welcome():
-    print("Server is working. Server received request for Welcome Page")
+def homepage():
+    print("Server is working. Server received request for Homepage")
     return (
-        f"You made it the SQLAlchemy Project Surf's Up!<br/>"
-        # f"Available Routes:<br/>"
+        f"You made it the SQLAlchemy Project: Climate App!<br/>"
+        f"Available Routes:<br/>"
         f"/api/v1.0/precipitation<br/>"
         f"/api/v1.0/stations<br/>"
         f"/api/v1.0/tobs<br/>"
         f"/api/v1.0/temp/start/end"
-    )
+    )  
 
-# Set the app.route() decorator for the "/api/v1.0/precipitation" route
+
 @app.route("/api/v1.0/precipitation")
-# define a precipitation() function that returns jsonified precipitation data from the database
 def precipitation():
+    # Create a session
+    session = Session(engine)   
     print("Server is working. Server received request for Precipitation Page")
-# In the function (logic should be the same from the starter_climate_analysis.ipynb notebook):
     # Calculate the date 1 year ago from last date in database
-    last_year = dt.date(2017, 8, 23) - timedelta(days = 365)
+    last_data_point = (session.query(HawaiiMeasurement.date)
+    .order_by(HawaiiMeasurement.date.desc())
+    .all())[0]
     # Query for the date and precipitation for the last year
-    results = session.query(HawaiiMeasurement.date, HawaiiMeasurement.prcp).\
-    filter(HawaiiMeasurement.date >= last_year).all()
-    # Create a dictionary to store the date: prcp pairs. 
-    prcp_pairs = {date: prcp for date, prcp in precipitation}
-    # Hint: check out a dictionary comprehension, which is similar to a list comprehension but allows you to create dictionaries
-    
-    # Return the jsonify() representation of the dictionary
-    return jsonify(prcp_pairs)
-    
-# Set the app.route() decorator for the "/api/v1.0/stations" route
-@app.route("/api/v1.0/stations")
-# define a stations() function that returns jsonified station data from the database
-def stations():
-    print("Server is working. Server received request for Stations Page")
-# In the function (logic should be the same from the starter_climate_analysis.ipynb notebook):
-    # Query for the list of stations
-    results = session.query(HawaiiStation.station).all()
-    # Unravel results into a 1D array and convert to a list
-    # Hint: checkout the np.ravel() function to make it easier to convert to a list
-    stations = list(np.ravel(results))
-    # Return the jsonify() representation of the list
-    return jsonify(stations=stations)
+    last_data = date.fromisoformat('2017-08-23')
+    last_year = last_data - timedelta(days = 365)
 
-# Set the app.route() decorator for the "/api/v1.0/tobs" route
+    # List of precipitation the past year
+    one_year_prcp = (session
+    .query(HawaiiMeasurement.date, HawaiiMeasurement.prcp)
+    .filter(HawaiiMeasurement.date >= last_year)
+    .all())
+
+    session.close()
+    # Use a shortcut for loop and use it to convert a list to dict by using `date` = key & `prcp` = value
+    convert_dict = {date: prcp for date, prcp in one_year_prcp}
+    # Return the jsonify() representation of the dictionary
+    return jsonify(convert_dict)
+    # SUB: return "json of dictionary using jsonify(dict_name)"
+    
+
+@app.route("/api/v1.0/stations")
+def stations():
+    # Create a session
+    session = Session(engine) 
+    print("Server is working. Server received request for Stations Page")
+    # Query for the list of stations
+    total_number_of_stations = (session.query(HawaiiStation.station).all())
+
+    session.close()
+    # numpy.ravel() function returns contiguous flattened array
+    stations_list = list(np.ravel(total_number_of_stations))
+    return jsonify(stations=stations_list)
+    # SUB: return "json of dictionary using jsonify(dict_name)"
+
+
 @app.route("/api/v1.0/tobs")
-# define a temp_monthly() function that returns jsonified temperature observations (tobs) data from the database
-def temp_monthly():
-    print("Server is working. Server received request for Monthly Temp Page")
-# In the function (logic should be the same from the starter_climate_analysis.ipynb notebook):
+def tobs():
+    # Create a session
+    session = Session(engine) 
+    print("Server is working. Server received request for TOB Page")
     # Calculate the date 1 year ago from last date in database
-    last_year = dt.date(2017, 8, 23) - timedelta(days = 365)
-    # Query the primary station for all tobs from the last year
-    results = session.query(HawaiiMeasurement.tobs).\
-        filter(HawaiiMeasurement.station == 'USC00519281').\
-        filter(HawaiiMeasurement.date >= last_year).all()
-    # Unravel results into a 1D array and convert to a list
-    # Hint: checkout the np.ravel() function to make it easier to convert to a list
-    temps = list(np.ravel(results))
-    # Return the jsonify() representation of the list
-    return jsonify(temps=temps)
+    last_data = date.fromisoformat('2017-08-23')
+    last_year = last_data - timedelta(days = 365)
+    # Query the dates and temperature observations of the most active station for the last year of data.
+    active_stat = (session
+                    .query(HawaiiMeasurement.station,
+                    func.avg(HawaiiMeasurement.tobs)
+                    , func.max(HawaiiMeasurement.tobs)
+                    , func.min(HawaiiMeasurement.tobs))
+                    .filter(HawaiiMeasurement.station == 'USC00519281')
+                    .all())
+    # # Query the primary station for all tobs from the last year
+    highest_tob = (session
+               .query(HawaiiMeasurement.date
+                , HawaiiMeasurement.station
+                , HawaiiMeasurement.tobs)
+               .filter(HawaiiMeasurement.station == 'USC00519281')
+               .filter(HawaiiMeasurement.date >= last_year)
+               .all())
+    session.close()
+    tobs = list(np.ravel(highest_tob))
+    return jsonify(tobs=tobs)
+    # SUB: return "json of dictionary using jsonify(dict_name)"
+
+# @app.route("/api/v1.0/temp/<start>")
+# def start_date(start=None, end=None):
+    # # Create a session
+    # session = Session(engine) 
+    # # Given the start only, calculate `TMIN`, `TAVG`, and `TMAX` for all dates greater than and equal to the start date.
+    # dates_greater = (session
+    #             .query(func.min(HawaiiMeasurement.tobs)
+    #             , func.avg(HawaiiMeasurement.tobs)
+    #             , func.max(HawaiiMeasurement.tobs))
+    #             .filter(HawaiiMeasurement.date >= start)
+    #             .all())
+    # session.close()
+    # return jsonify(start_date=dates_greater)
+    
+@app.route("/api/v1.0/temp/<start>")
+@app.route("/api/v1.0/temp/<start>/<end>")
+def end_date(start=None, end=None):
+    # Create a session
+    session = Session(engine) 
+    #  Given the start and the end date, calculate the `TMIN`, `TAVG`, and `TMAX` for dates between the start and end date inclusive.
+    if end is None: 
+        dates_greater = (session
+                .query(func.min(HawaiiMeasurement.tobs)
+                , func.avg(HawaiiMeasurement.tobs)
+                , func.max(HawaiiMeasurement.tobs))
+                .filter(HawaiiMeasurement.date >= start)
+                .all())
+        return jsonify(end_date=dates_greater)
+
+    dates_between = (session
+                .query(func.min(HawaiiMeasurement.tobs)
+                , func.avg(HawaiiMeasurement.tobs)
+                , func.max(HawaiiMeasurement.tobs))
+                .filter(HawaiiMeasurement.date >= start)
+                .filter(HawaiiMeasurement.date <= end)
+                .all())
+
+    return jsonify(end_date=dates_between)
 
 if __name__ == '__main__':
     app.run(debug=True)
