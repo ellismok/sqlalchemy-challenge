@@ -1,10 +1,14 @@
 ### IMPORT LIBRARIES ###
 from matplotlib import style
 import matplotlib.pyplot as plt
+
 import numpy as np
 import pandas as pd
+from pandas.plotting import table
+
 from datetime import datetime, timedelta
 from datetime import date
+
 import sqlalchemy
 from sqlalchemy.ext.automap import automap_base
 from sqlalchemy.orm import Session
@@ -12,9 +16,6 @@ from sqlalchemy import create_engine, func
 from sqlalchemy import desc
 
 from flask import Flask, jsonify
-
-### FLASK SET UP ###
-app = Flask(__name__)
 
 
 ### DATABASE SET UP ###
@@ -25,29 +26,31 @@ engine = create_engine("sqlite:///data/hawaii.sqlite")
 Base = automap_base()
 # Save references to each table
 Base.prepare(engine, reflect = True)
-
+# Create a session
+session = Session(engine)
 # Create mapped classes with new variable names 
 HawaiiMeasurement = Base.classes.measurement
 HawaiiStation = Base.classes.station
 
-# Create a session
-session = Session(engine)
+
+### FLASK SET UP ###
+app = Flask(__name__)
+
 
 ### ROUTE SET UP ###
 @app.route("/")
 def homepage():
-    print("Server is working. Server received request for Homepage")
     return (
         f"You made it the SQLAlchemy Project: Climate App!<br/>"
         f"Available Routes:<br/>"
-        f"/api/v1.0/precipitation<br/>"
-        f"/api/v1.0/stations<br/>"
-        f"/api/v1.0/tobs<br/>"
+        f"/precipitation<br/>"
+        f"/stations<br/>"
+        f"/tobs<br/>"
         f"/api/v1.0/temp/start/end"
     )  
 
 
-@app.route("/api/v1.0/precipitation")
+@app.route("/precipitation")
 def precipitation():
     # Create a session
     session = Session(engine)   
@@ -74,7 +77,7 @@ def precipitation():
     # SUB: return "json of dictionary using jsonify(dict_name)"
     
 
-@app.route("/api/v1.0/stations")
+@app.route("/stations")
 def stations():
     # Create a session
     session = Session(engine) 
@@ -85,11 +88,11 @@ def stations():
     session.close()
     # numpy.ravel() function returns contiguous flattened array
     stations_list = list(np.ravel(total_number_of_stations))
-    return jsonify(stations=stations_list)
+    return jsonify(stations_list=stations_list)
     # SUB: return "json of dictionary using jsonify(dict_name)"
 
 
-@app.route("/api/v1.0/tobs")
+@app.route("/tobs")
 def tobs():
     # Create a session
     session = Session(engine) 
@@ -118,44 +121,35 @@ def tobs():
     return jsonify(tobs=tobs)
     # SUB: return "json of dictionary using jsonify(dict_name)"
 
-# @app.route("/api/v1.0/temp/<start>")
-# def start_date(start=None, end=None):
-    # # Create a session
-    # session = Session(engine) 
-    # # Given the start only, calculate `TMIN`, `TAVG`, and `TMAX` for all dates greater than and equal to the start date.
-    # dates_greater = (session
-    #             .query(func.min(HawaiiMeasurement.tobs)
-    #             , func.avg(HawaiiMeasurement.tobs)
-    #             , func.max(HawaiiMeasurement.tobs))
-    #             .filter(HawaiiMeasurement.date >= start)
-    #             .all())
-    # session.close()
-    # return jsonify(start_date=dates_greater)
-    
+
 @app.route("/api/v1.0/temp/<start>")
 @app.route("/api/v1.0/temp/<start>/<end>")
-def end_date(start=None, end=None):
+def summary(start=None, end=None):
     # Create a session
     session = Session(engine) 
+    
+    # Select statement
+    sel = [func.min(HawaiiMeasurement.tobs), func.avg(HawaiiMeasurement.tobs), func.max(HawaiiMeasurement.tobs)]
+
     #  Given the start and the end date, calculate the `TMIN`, `TAVG`, and `TMAX` for dates between the start and end date inclusive.
-    if end is None: 
+    if not end: 
         dates_greater = (session
                 .query(func.min(HawaiiMeasurement.tobs)
                 , func.avg(HawaiiMeasurement.tobs)
                 , func.max(HawaiiMeasurement.tobs))
                 .filter(HawaiiMeasurement.date >= start)
                 .all())
-        return jsonify(end_date=dates_greater)
+        return jsonify(summary=dates_greater)
 
-    dates_between = (session
+    dates_greater = (session
                 .query(func.min(HawaiiMeasurement.tobs)
                 , func.avg(HawaiiMeasurement.tobs)
                 , func.max(HawaiiMeasurement.tobs))
                 .filter(HawaiiMeasurement.date >= start)
                 .filter(HawaiiMeasurement.date <= end)
                 .all())
-
-    return jsonify(end_date=dates_between)
+    session.close()
+    return jsonify(summary=dates_greater)
 
 if __name__ == '__main__':
     app.run(debug=True)
